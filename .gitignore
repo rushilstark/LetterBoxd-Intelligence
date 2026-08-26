@@ -1,0 +1,49 @@
+# ── Personal Data (NEVER commit) ──────────────────────────────────────────────
+# Your Letterboxd CSV exports (private watch history)
+/data/
+*.csv
+
+# ── Vector Databases (large binary, rebuilt via pipeline.py) ──────────────────
+src/embeddings/
+embeddings/
+*.sqlite3
+*.db
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Editor / IDE ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Secrets / Keys ────────────────────────────────────────────────────────────
+.env
+*.env
+secrets.py
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
