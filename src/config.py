@@ -50,3 +50,17 @@ WEIGHTS = {
 # ── UI ─────────────────────────────────────────────────────────────────────────
 APP_TITLE = "🎬 Letterboxd Intelligence"
 ACCENT    = "#E9A84C"       # warm amber – letterboxd-ish
+
+# ── Cross-domain APIs ─────────────────────────────────────────────────────────
+LASTFM_API_KEY        = os.environ.get('LASTFM_API_KEY', '')
+SPOTIFY_CLIENT_ID     = os.environ.get('SPOTIFY_CLIENT_ID', '')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', '')
+GOOGLE_BOOKS_API_KEY  = os.environ.get('GOOGLE_BOOKS_API_KEY', '')
+
+# ── Cross-domain ChromaDB ─────────────────────────────────────────────────────
+CHROMA_CULTURAL_COLLECTION = 'cultural_fingerprint'
+
+# ── Cross-domain cache files ──────────────────────────────────────────────────
+LASTFM_CACHE   = DATA_DIR / 'lastfm_cache.json'
+BOOKS_CACHE    = DATA_DIR / 'books_cache.json'
+SPOTIFY_CACHE  = DATA_DIR / 'spotify_cache.json'

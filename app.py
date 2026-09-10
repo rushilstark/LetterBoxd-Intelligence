@@ -327,6 +327,10 @@ with st.sidebar:
         "🧬 Taste DNA",
         "📈 Drift Analysis",
         "⚙️ Setup",
+        "🎵 Music Taste",
+        "📚 Book Taste",
+        "🌐 Cultural DNA",
+        "🔮 Cross-Predict",
     ], label_visibility="collapsed")
 
     st.markdown("---")
@@ -1059,3 +1063,270 @@ OLLAMA_EMBED_MODEL = "mxbai-embed-large"
 ```
 Then re-run the pipeline with `--force` to re-embed.
     """)
+
+elif page == '🎵 Music Taste':
+    st.markdown('# 🎵 Your Music Taste')
+    st.caption('Connect Last.fm to map your music taste into the same intelligence space as your films.')
+    st.markdown('---')
+    
+    # Two-column input
+    c1, c2 = st.columns(2)
+    lastfm_user = c1.text_input('Last.fm Username', placeholder='your_username')
+    lastfm_key  = c2.text_input('Last.fm API Key', placeholder='Get free key at last.fm/api', type='password')
+    
+    # Prefill from env
+    if not lastfm_key:
+        from src.config import LASTFM_API_KEY
+        lastfm_key = LASTFM_API_KEY
+    
+    if st.button('🎵 Load Music Data', disabled=not (lastfm_user and lastfm_key)):
+        with st.spinner(f'Fetching your Last.fm data for {lastfm_user}...'):
+            try:
+                from src.lastfm_ingest import load_lastfm_data
+                music_df = load_lastfm_data(lastfm_user, lastfm_key)
+                st.session_state['music_df'] = music_df
+                st.success(f'Loaded {len(music_df)} artists!')
+            except Exception as e:
+                st.error(f'Failed: {e}')
+    
+    if 'music_df' in st.session_state:
+        music_df = st.session_state['music_df']
+        
+        # Top artists
+        st.markdown('### 🎤 Your Top Artists')
+        top10 = music_df.head(10)
+        cols = st.columns(5)
+        for i, (_, row) in enumerate(top10.iterrows()):
+            with cols[i % 5]:
+                tags_preview = ', '.join(row.get('tags', [])[:2]) if row.get('tags') else ''
+                st.markdown(
+                    f"<div class='movie-card' style='text-align:center; min-height:80px;'>"
+                    f"<div class='movie-title' style='font-size:13px;'>{row['name']}</div>"
+                    f"<div class='movie-meta'>{tags_preview}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+        
+        # Tag cloud as bar chart
+        st.markdown('### 🏷️ Your Music DNA (Most Common Tags)')
+        from collections import Counter
+        all_tags = []
+        for tags in music_df['tags']:
+            if isinstance(tags, list):
+                all_tags.extend(tags[:3])
+        tag_counts = Counter(all_tags).most_common(15)
+        if tag_counts:
+            import plotly.express as px
+            tag_df = pd.DataFrame(tag_counts, columns=['tag', 'count'])
+            fig = px.bar(tag_df, x='count', y='tag', orientation='h',
+                        color='count', color_continuous_scale=[[0,'#1a1a2e'],[1,ACCENT]])
+            fig.update_layout(yaxis={'categoryorder':'total ascending'}, coloraxis_showscale=False)
+            plotly_dark_layout(fig)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Index button
+        st.markdown('---')
+        if st.button('🧠 Index Music for Cross-Domain Intelligence'):
+            with st.spinner('Embedding your music taste...'):
+                from src.cross_domain import index_music
+                index_music(music_df)
+            st.success('Music indexed! Go to 🌐 Cultural DNA to see cross-domain insights.')
+
+elif page == '📚 Book Taste':
+    st.markdown('# 📚 Your Book Taste')
+    st.caption('Upload your Goodreads export to add books to your cultural intelligence.')
+    st.markdown('---')
+    
+    st.info('**Get your Goodreads export:** goodreads.com → My Books → Import/Export → Export Library')
+    
+    uploaded = st.file_uploader('Upload goodreads_library_export.csv', type='csv')
+    
+    if uploaded:
+        import tempfile, os as _os
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+            tmp.write(uploaded.read())
+            tmp_path = tmp.name
+        
+        try:
+            from src.goodreads_ingest import load_goodreads_data
+            books_df = load_goodreads_data(tmp_path)
+            st.session_state['books_df'] = books_df
+            _os.unlink(tmp_path)
+        except Exception as e:
+            st.error(f'Parse error: {e}')
+            books_df = None
+        
+        if 'books_df' in st.session_state:
+            books_df = st.session_state['books_df']
+            rated = books_df[books_df['my_rating'] > 0]
+            
+            # Stats
+            m1, m2, m3 = st.columns(3)
+            m1.metric('Books loaded', len(books_df))
+            m2.metric('Rated', len(rated))
+            m3.metric('Avg rating', f"{rated['my_rating'].mean():.1f}★" if len(rated) > 0 else '—')
+            
+            # Top rated books
+            st.markdown('### ⭐ Your Top Books')
+            top_books = rated.nlargest(10, 'my_rating')
+            for _, row in top_books.iterrows():
+                rating_str = '★' * int(row['my_rating'])
+                st.markdown(
+                    f"<div class='movie-card'>"
+                    f"<span class='movie-title'>{row['title']}</span>"
+                    f"<span class='movie-meta'> by {row.get('author','?')}</span>"
+                    f"<div class='stars'>{rating_str}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            
+            # Rating distribution
+            st.markdown('### ⭐ Rating Distribution')
+            dist = rated['my_rating'].value_counts().sort_index()
+            fig = px.bar(x=dist.index, y=dist.values, labels={'x':'Rating','y':'Books'},
+                        color=dist.values, color_continuous_scale=[[0,'#1a1a2e'],[1,ACCENT]])
+            fig.update_layout(coloraxis_showscale=False)
+            plotly_dark_layout(fig)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown('---')
+            if st.button('🧠 Index Books for Cross-Domain Intelligence'):
+                with st.spinner('Embedding your book taste...'):
+                    from src.cross_domain import index_books
+                    from src.goodreads_ingest import build_book_text
+                    # Add text_for_embedding column
+                    books_df['text_for_embedding'] = books_df.apply(
+                        lambda r: build_book_text(r.to_dict()), axis=1
+                    )
+                    index_books(books_df)
+                st.success('Books indexed! Go to 🌐 Cultural DNA.')
+
+elif page == '🌐 Cultural DNA':
+    st.markdown('# 🌐 Your Cultural DNA')
+    st.caption('Films + Books + Music — all in one unified taste map.')
+    st.markdown('---')
+    
+    from src.cross_domain import (
+        cross_domain_recommend, get_cultural_coherence_score,
+        search_cross_domain, CHROMA_CULTURAL_COLLECTION
+    )
+    from src.vector_store import collection_count
+    
+    cultural_count = collection_count(CHROMA_CULTURAL_COLLECTION)
+    film_count = counts.get('my_lens', 0)
+    
+    if cultural_count < 10:
+        st.warning('Index your music or books first using the 🎵 and 📚 pages.')
+    else:
+        st.metric('Items in Cultural Space', cultural_count)
+        
+        # Cross-domain recommendations
+        st.markdown('### 🎵 → 🎬 Films Matching Your Music Taste')
+        with st.spinner('Computing cross-domain matches...'):
+            music_to_film = cross_domain_recommend('music', 'film', n=6)
+        
+        if music_to_film:
+            cols = st.columns(3)
+            for i, item in enumerate(music_to_film[:6]):
+                with cols[i % 3]:
+                    sim_pct = f"{item['similarity']:.0%}"
+                    st.markdown(
+                        f"<div class='movie-card'>"
+                        f"<span class='movie-title'>{item.get('title', item.get('name','?'))}</span>"
+                        f"<div class='movie-meta'>Match: <b style='color:{ACCENT}'>{sim_pct}</b></div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+        else:
+            st.info('Index your music first.')
+        
+        st.markdown('### 📚 → 🎬 Films Matching Your Book Taste')
+        with st.spinner('Computing cross-domain matches...'):
+            book_to_film = cross_domain_recommend('book', 'film', n=6)
+        
+        if book_to_film:
+            cols = st.columns(3)
+            for i, item in enumerate(book_to_film[:6]):
+                with cols[i % 3]:
+                    sim_pct = f"{item['similarity']:.0%}"
+                    st.markdown(
+                        f"<div class='movie-card'>"
+                        f"<span class='movie-title'>{item.get('title', item.get('name','?'))}</span>"
+                        f"<div class='movie-meta'>Match: <b style='color:{ACCENT}'>{sim_pct}</b></div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+        else:
+            st.info('Index your books first.')
+        
+        # Coherence score
+        score = get_cultural_coherence_score()
+        if score is not None:
+            st.markdown('---')
+            st.markdown('### 🧬 Cultural Coherence')
+            st.markdown(f'How aligned is your film + music taste?')
+            st.progress(float(score))
+            pct = f'{score:.0%}'
+            if score > 0.7:
+                st.success(f'{pct} — Very coherent. Your music and film taste share deep thematic DNA.')
+            elif score > 0.4:
+                st.info(f'{pct} — Moderate alignment. You explore different moods across mediums.')
+            else:
+                st.warning(f'{pct} — Low alignment. You use music and film very differently.')
+        
+        # Cross-domain search
+        st.markdown('---')
+        st.markdown('### 🔍 Search Across All Domains')
+        xq = st.text_input('Search films + books + music together', placeholder='melancholic and introspective...')
+        if xq and st.button('Search Everything'):
+            results = search_cross_domain(xq, n=12)
+            if results:
+                for r in results:
+                    domain_icon = {'film':'🎬','book':'📚','music':'🎵'}.get(r.get('domain',''),'•')
+                    st.markdown(
+                        f"{domain_icon} **{r.get('title', r.get('name','?'))}** — {r.get('domain','')} — {r['similarity']:.0%} match"
+                    )
+
+elif page == '🔮 Cross-Predict':
+    st.markdown('# 🔮 Cross-Domain Prediction')
+    st.caption("Predict how much you'd love something — based on your taste across ALL domains.")
+    st.markdown('---')
+    
+    from src.cross_domain import cross_domain_predict_rating
+    
+    title_input = st.text_input('Film, book, or album title', placeholder='e.g. Dune: Part Two')
+    domain_input = st.selectbox('What type?', ['film', 'book', 'music'])
+    year_input = st.text_input('Year (optional)', placeholder='2024')
+    
+    if st.button('🔮 Predict', disabled=not title_input.strip()):
+        with st.spinner('Analyzing across all your cultural taste...'):
+            result = cross_domain_predict_rating(title_input.strip(), domain_input, year_input)
+        
+        if result.get('predicted_rating'):
+            pred = result['predicted_rating']
+            conf = result.get('confidence', 0)
+            
+            st.markdown(
+                f"<div class='movie-card' style='text-align:center; padding:32px;'>"
+                f"<div style='font-size:48px; color:{ACCENT};'>{pred:.1f}★</div>"
+                f"<div class='movie-meta'>Predicted rating · {conf:.0%} confidence</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            
+            # Why
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown('**Similar films you loved:**')
+                for f in result.get('top_films', [])[:3]:
+                    st.markdown(f"• {f.get('title','?')} ({f.get('rating','?')}★)")
+            with c2:
+                st.markdown('**Similar books you loved:**')
+                for b in result.get('top_books', [])[:3]:
+                    st.markdown(f"• {b.get('title','?')}")
+            with c3:
+                st.markdown('**Similar music:**')
+                for m in result.get('top_music', [])[:3]:
+                    st.markdown(f"• {m.get('name','?')}")
+        else:
+            st.info('Not enough cross-domain data yet. Index your music and books first.')
