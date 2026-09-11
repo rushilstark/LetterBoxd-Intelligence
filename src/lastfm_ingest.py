@@ -74,21 +74,40 @@ def get_top_artists(username: str, api_key: str, limit: int = 100, period: str =
 
 
 def build_artist_text(artist: dict) -> str:
-    tags_str = ", ".join(artist.get("tags", []))
+    tags_str = ", ".join(artist.get("tags") or [])
     return f"Artist: {artist.get('name')} | Tags: {tags_str} | Playcount: {artist.get('playcount')}"
 
 
 def load_lastfm_data(username: str, api_key: str) -> pd.DataFrame:
     artists = get_top_artists(username, api_key)
-    df = pd.DataFrame(artists)
-    df["text_for_embedding"] = df.apply(build_artist_text, axis=1)
-    df["domain"] = "music"
-    
-    all_tags = [tag for tags in df["tags"] for tag in tags]
+
+    # Ensure every artist dict has a 'tags' key
+    for a in artists:
+        if "tags" not in a or a["tags"] is None:
+            a["tags"] = []
+
+    if not artists:
+        print("[lastfm] No artists found — check username and API key")
+        return pd.DataFrame(columns=["name", "playcount", "tags", "text_for_embedding", "domain"])
+
+    # Build rows manually to avoid pandas expanding list columns
+    rows = []
+    for a in artists:
+        rows.append({
+            "name": a.get("name", ""),
+            "playcount": a.get("playcount", 0),
+            "tags": a.get("tags") or [],
+            "text_for_embedding": build_artist_text(a),
+            "domain": "music",
+        })
+
+    df = pd.DataFrame(rows)
+
     from collections import Counter
+    all_tags = [tag for row in rows for tag in row["tags"]]
     tag_counts = Counter(all_tags)
-    top_tags_str = ", ".join([f"{k} ({v})" for k, v in tag_counts.most_common(2)])
-    
-    print(f"[lastfm] Loaded {len(df)} artists | top tags: {top_tags_str}...")
-    
+    top_tags_str = ", ".join([f"{k} ({v})" for k, v in tag_counts.most_common(5)])
+    print(f"[lastfm] Loaded {len(df)} artists | top tags: {top_tags_str}")
+
     return df
+

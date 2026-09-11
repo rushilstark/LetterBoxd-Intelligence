@@ -318,6 +318,7 @@ with st.sidebar:
     st.markdown(f"## 🎬 Letterboxd\n### Intelligence Engine")
     st.markdown("---")
     page = st.radio("Navigate", [
+        "🎬 Discover",
         "📊 Dashboard",
         "🔮 Predict Rating",
         "✍️ Writing Analytics",
@@ -347,12 +348,286 @@ rated_df["final_rating"] = pd.to_numeric(rated_df["final_rating"], errors="coerc
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PAGE: DISCOVER (mood-based film recommendation engine)
+# ══════════════════════════════════════════════════════════════════════════════
+if page == "🎬 Discover":
+
+    from src.config import TMDB_API_KEY, LASTFM_API_KEY, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+    from src.mood_engine import (
+        get_recent_mood_from_features, mood_from_lastfm_tags,
+        get_recommendations, estimate_accuracy, MOOD_PROFILES,
+    )
+
+    # ── Hero header ──────────────────────────────────────────────────────────
+    st.markdown("""
+    <div style="
+        text-align: center;
+        padding: 48px 0 32px;
+        background: linear-gradient(180deg, rgba(233,168,76,0.04) 0%, transparent 100%);
+        border-radius: 20px;
+        margin-bottom: 32px;
+    ">
+        <div style="font-size: 13px; letter-spacing: 4px; text-transform: uppercase;
+                    color: #E9A84C; font-weight: 600; margin-bottom: 16px;">
+            Cultural Alignment Engine
+        </div>
+        <h1 style="font-size: clamp(28px, 5vw, 48px); font-weight: 800;
+                   letter-spacing: -1.5px; margin: 0 0 12px; color: #fff;">
+            What should you watch tonight?
+        </h1>
+        <p style="color: #8e8e93; font-size: 16px; max-width: 520px; margin: 0 auto; line-height: 1.6;">
+            Connect your music and film history. We read your current vibe
+            and find films <em>aligned to it</em> — not just highly rated ones.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Source connection cards ──────────────────────────────────────────────
+    col1, col2, col3 = st.columns(3)
+
+    spotify_connected = "spotify_tracks" in st.session_state
+    letterboxd_ok = len(df) > 100
+    goodreads_ok = "books_df" in st.session_state
+
+    def source_card(col, icon, name, status, note, color):
+        checkmark = f"<span style='color:{color};font-size:18px;'>✓</span>" if status else "○"
+        col.markdown(f"""
+        <div class='movie-card' style='text-align:center; padding:24px 16px; min-height:130px;
+             border-color: {"rgba(233,168,76,0.4)" if status else "rgba(255,255,255,0.05)"};'>
+            <div style='font-size:28px; margin-bottom:8px;'>{icon}</div>
+            <div style='font-weight:700; font-size:14px; color:#fff;'>{checkmark} {name}</div>
+            <div style='font-size:11px; color:#8e8e93; margin-top:6px; line-height:1.4;'>{note}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col1:
+        source_card(col1, "🟢", "Spotify",
+                    spotify_connected,
+                    "Most accurate: reads your last 50 songs live",
+                    "#1DB954")
+    with col2:
+        source_card(col2, "🟠", "Letterboxd",
+                    letterboxd_ok,
+                    f"{'✓ ' + str(len(df)) + ' films loaded' if letterboxd_ok else 'Add via pipeline for taste calibration'}",
+                    "#E9A84C")
+    with col3:
+        source_card(col3, "📚", "Goodreads",
+                    goodreads_ok,
+                    f"{'✓ Books indexed' if goodreads_ok else 'Upload CSV in 📚 Book Taste page'}",
+                    "#4a9e7f")
+
+    st.markdown("")
+
+    # ── Accuracy bar ────────────────────────────────────────────────────────
+    active_sources = (
+        (["spotify"] if spotify_connected else []) +
+        (["letterboxd"] if letterboxd_ok else []) +
+        (["goodreads"] if goodreads_ok else [])
+    )
+    acc = estimate_accuracy(active_sources)
+
+    st.markdown(f"""
+    <div style='background: rgba(20,20,25,0.6); border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 12px; padding: 16px 24px; margin-bottom: 24px;
+                display: flex; align-items: center; gap: 16px;'>
+        <div style='flex:1;'>
+            <div style='font-size:11px; color:#8e8e93; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px;'>
+                Alignment accuracy · {acc["sources_connected"]}/3 sources
+            </div>
+            <div style='background:#1c1c1e; border-radius:4px; height:6px; overflow:hidden;'>
+                <div style='background: linear-gradient(90deg, #E9A84C, #f5c87a);
+                            width:{acc["pct"]}%; height:100%; border-radius:4px;
+                            transition: width 0.6s ease;'></div>
+            </div>
+        </div>
+        <div style='font-size:22px; font-weight:800; color:#E9A84C; min-width:48px; text-align:right;'>
+            {acc["pct"]}%
+        </div>
+        <div style='font-size:13px; color:#8e8e93; min-width:180px;'>
+            {acc["label"]}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Spotify connect (if not yet connected) ──────────────────────────────
+    if not spotify_connected:
+        with st.expander("🟢 Connect Spotify", expanded=True):
+            st.caption("Get free credentials in 2 min: [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → Create App → Redirect URI: `http://localhost:8888/callback`")
+            sc1, sc2 = st.columns(2)
+            sp_id     = sc1.text_input("Client ID",     value=SPOTIFY_CLIENT_ID or "",  type="password")
+            sp_secret = sc2.text_input("Client Secret", value=SPOTIFY_CLIENT_SECRET or "", type="password")
+
+            if st.button("🔗 Connect & Read Recent Plays", disabled=not (sp_id and sp_secret)):
+                try:
+                    from src.spotify_ingest import get_spotify_client, get_top_tracks_with_features
+                    sp = get_spotify_client(sp_id, sp_secret)
+                    with st.spinner("Reading your last 50 songs..."):
+                        # Try recently played first, fall back to top tracks
+                        try:
+                            recent = sp.current_user_recently_played(limit=50)
+                            track_ids = [item["track"]["id"] for item in recent.get("items", []) if item.get("track")]
+                            artist_names = list(dict.fromkeys(
+                                item["track"]["artists"][0]["name"]
+                                for item in recent.get("items", [])
+                                if item.get("track") and item["track"].get("artists")
+                            ))[:10]
+                            # Get audio features
+                            feats_raw = sp.audio_features(track_ids[:50]) or []
+                            tracks_with_feats = [f for f in feats_raw if f]
+                        except Exception:
+                            tracks_with_feats = get_top_tracks_with_features(sp, limit=50)
+                            artist_names = []
+
+                        st.session_state["spotify_tracks"] = tracks_with_feats
+                        st.session_state["spotify_artists"] = artist_names
+                    st.success(f"Connected! Read {len(tracks_with_feats)} tracks.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Connection failed: {e}")
+
+    # ── Last.fm fallback mood ───────────────────────────────────────────────
+    if not spotify_connected and LASTFM_API_KEY and "music_df" in st.session_state:
+        music_df_local = st.session_state["music_df"]
+        all_tags = [t for tags in music_df_local["tags"] for t in (tags or [])]
+        st.session_state["lastfm_mood"] = mood_from_lastfm_tags(all_tags)
+
+    # ── Analyse & Recommend ─────────────────────────────────────────────────
+    can_recommend = spotify_connected or "lastfm_mood" in st.session_state or letterboxd_ok
+
+    if not can_recommend:
+        st.info("Connect at least one source above to get your film recommendations.")
+        st.stop()
+
+    if st.button("🎬 Find My Film", type="primary", use_container_width=True):
+        with st.spinner("Reading your vibe..."):
+            # Determine mood
+            if spotify_connected:
+                mood = get_recent_mood_from_features(st.session_state["spotify_tracks"])
+            elif "lastfm_mood" in st.session_state:
+                mood = st.session_state["lastfm_mood"]
+            else:
+                # Letterboxd-only: infer from genre preferences
+                top_genres = []
+                if letterboxd_ok and "genres" in df.columns:
+                    import ast
+                    for g_val in df["genres"].dropna():
+                        try:
+                            genres = ast.literal_eval(g_val) if isinstance(g_val, str) else g_val
+                            top_genres.extend(genres[:2])
+                        except Exception:
+                            pass
+                from collections import Counter
+                dominant = Counter(top_genres).most_common(1)
+                mood_name = "Melancholic"
+                if dominant:
+                    g = dominant[0][0].lower()
+                    if "action" in g or "adventure" in g: mood_name = "Euphoric"
+                    elif "thriller" in g or "crime" in g: mood_name = "Intense"
+                    elif "comedy" in g or "romance" in g: mood_name = "Chill"
+                from src.mood_engine import MOOD_PROFILES
+                mood = {**MOOD_PROFILES[mood_name], "name": mood_name, "source": "letterboxd_genres"}
+
+            top_artists = st.session_state.get("spotify_artists", [])
+            recs = get_recommendations(
+                mood_profile=mood,
+                api_key=TMDB_API_KEY,
+                letterboxd_df=df if letterboxd_ok else None,
+                goodreads_df=st.session_state.get("books_df"),
+                sources=active_sources,
+                top_artists=top_artists,
+                n=18,
+            )
+            st.session_state["discover_recs"] = recs
+            st.session_state["discover_mood"] = mood
+
+    # ── Results ─────────────────────────────────────────────────────────────
+    if "discover_recs" in st.session_state and st.session_state["discover_recs"]:
+        mood = st.session_state["discover_mood"]
+        recs = st.session_state["discover_recs"]
+
+        # Mood badge
+        m_color = mood.get("color", "#E9A84C")
+        st.markdown(f"""
+        <div style='display:inline-flex; align-items:center; gap:10px;
+                    background: {m_color}18; border: 1px solid {m_color}44;
+                    border-radius: 100px; padding: 8px 20px; margin-bottom: 24px;'>
+            <span style='font-size:20px;'>{mood.get("emoji","🎬")}</span>
+            <span style='font-weight:700; color:{m_color};'>
+                {mood.get("name","?")} Mood
+            </span>
+            <span style='color:#8e8e93; font-size:13px;'>·</span>
+            <span style='color:#8e8e93; font-size:13px;'>{mood.get("description","")}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Filter chips
+        filter_col1, filter_col2, filter_col3, filter_col4, _ = st.columns([1, 1, 1, 1, 4])
+        show_all       = filter_col1.button("All",          use_container_width=True)
+        show_hidden    = filter_col2.button("Hidden Gems",  use_container_width=True)
+        show_acclaimed = filter_col3.button("Acclaimed",    use_container_width=True)
+        show_recent    = filter_col4.button("Recent",       use_container_width=True)
+
+        filtered_recs = recs
+        if show_hidden:
+            filtered_recs = [r for r in recs if (r.get("vote_average") or 0) < 7.0]
+        elif show_acclaimed:
+            filtered_recs = [r for r in recs if (r.get("vote_average") or 0) >= 7.5]
+        elif show_recent:
+            filtered_recs = [r for r in recs if (r.get("year") or "0") >= "2018"]
+
+        st.markdown(f"**{len(filtered_recs)} films aligned to your vibe** — sorted by mood match, not rating")
+        st.markdown("")
+
+        # Film cards — 3 per row
+        for row_start in range(0, min(len(filtered_recs), 18), 3):
+            row = filtered_recs[row_start:row_start + 3]
+            cols = st.columns(3)
+            for col, film in zip(cols, row):
+                with col:
+                    alignment = film.get("alignment", 0)
+                    rating    = film.get("vote_average")
+                    rating_str = f"TMDB {rating:.1f}/10" if rating else "No rating"
+                    align_color = "#4a9e7f" if alignment >= 70 else "#E9A84C" if alignment >= 45 else "#8e8e93"
+                    poster_html = get_poster_html(film.get("poster_url", ""), width=180, alt_text=film.get("title", ""))
+
+                    st.markdown(f"""
+                    <div class='movie-card' style='padding:16px;'>
+                        <div style='display:flex; gap:14px; align-items:flex-start;'>
+                            <div style='flex-shrink:0;'>{poster_html}</div>
+                            <div style='flex:1; min-width:0;'>
+                                <div class='movie-title' style='font-size:14px; margin-bottom:4px;'>
+                                    {film.get("title","")}
+                                </div>
+                                <div class='movie-meta'>{film.get("year","")} · {rating_str}</div>
+                                <div style='margin: 10px 0 6px;'>
+                                    <div style='font-size:11px; color:#8e8e93; margin-bottom:4px;'>Mood match</div>
+                                    <div style='background:#1c1c1e; border-radius:3px; height:5px; overflow:hidden;'>
+                                        <div style='background:{align_color}; width:{alignment}%; height:100%; border-radius:3px;'></div>
+                                    </div>
+                                    <div style='font-size:12px; font-weight:700; color:{align_color}; margin-top:4px;'>{alignment:.0f}%</div>
+                                </div>
+                                <div class='movie-meta' style='font-size:11px; font-style:italic; line-height:1.5;'>
+                                    {film.get("explanation","")[:120]}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        if st.button("🔄 Refresh Recommendations"):
+            del st.session_state["discover_recs"]
+            del st.session_state["discover_mood"]
+            st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PAGE: DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
-if page == "📊 Dashboard":
+elif page == "📊 Dashboard":
     st.markdown(f"# 📊 Your Cinematic Universe")
     st.caption("A complete picture of your movie-watching history")
     st.markdown("---")
+
 
     # ── Top metrics ──────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
