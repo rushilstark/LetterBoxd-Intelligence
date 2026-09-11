@@ -9,7 +9,24 @@ import requests
 from pathlib import Path
 from typing import Optional
 
-from src.config import TMDB_API_KEY, TMDB_BASE_URL, TMDB_RATE_LIMIT, TMDB_CACHE_DB, DATA_DIR
+from src.config import TMDB_BASE_URL, TMDB_RATE_LIMIT, TMDB_CACHE_DB, DATA_DIR
+from src.config_store import get_key
+import os
+
+def get_tmdb_key():
+    k = get_key("TMDB_API_KEY", "")
+    if not k:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            k = os.environ.get("TMDB_API_KEY", "")
+        except: pass
+    if not k:
+        try:
+            from src.config import TMDB_API_KEY
+            k = TMDB_API_KEY
+        except: pass
+    return k
 
 # ── DB setup ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +53,7 @@ def _get_conn() -> sqlite3.Connection:
 def _tmdb_get(endpoint: str, params: dict = {}) -> Optional[dict]:
     """Raw GET with rate limiting."""
     url = f"{TMDB_BASE_URL}/{endpoint}"
-    params["api_key"] = TMDB_API_KEY
+    params["api_key"] = get_tmdb_key()
     try:
         resp = requests.get(url, params=params, timeout=10)
         time.sleep(TMDB_RATE_LIMIT)

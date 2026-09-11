@@ -582,19 +582,22 @@ elif page == '📊 My Taste':
     st.caption("What your ratings actually reveal — real data science, not just charts")
     st.markdown("---")
 
+    if 'final_rating' not in df.columns:
+        df['final_rating'] = np.nan
+
     rated = df[df['final_rating'].notna()].copy()
     rated['final_rating'] = pd.to_numeric(rated['final_rating'], errors='coerce')
     rated = rated.dropna(subset=['final_rating'])
     if 'my_review' not in rated.columns: rated['my_review'] = ""
     if 'is_rewatch' not in rated.columns: rated['is_rewatch'] = False
-    rated['review_len'] = rated['my_review'].fillna("").str.len()
+    rated['review_len'] = rated['my_review'].fillna("").astype(str).str.len()
     rated['is_rewatch'] = rated['is_rewatch'].fillna(False).astype(int)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Films Rated", f"{len(rated):,}")
     c2.metric("Avg Rating", f"{rated['final_rating'].mean():.2f}★")
     c3.metric("5★ Films", f"{(rated['final_rating']==5.0).sum():,}")
-    c4.metric("Reviews", f"{(rated['my_review'].str.len() > 20).sum():,}")
+    c4.metric("Reviews", f"{(rated['my_review'].fillna('').astype(str).str.len() > 20).sum():,}")
     st.markdown("")
 
     @st.cache_data(ttl=3600, show_spinner="Computing taste analysis...")
@@ -646,12 +649,14 @@ elif page == '📊 My Taste':
                 r, p = _st.pearsonr(edf[col], edf["my_rating"])
                 corrs[labels[col]] = round(r, 3)
             except: pass
+        if len(edf) < len(feat_cols) + 1: return None
         X = StandardScaler().fit_transform(edf[feat_cols].values)
         y = edf["my_rating"].values
         model = Ridge(alpha=1.0).fit(X, y)
         r2 = r2_score(y, model.predict(X))
         rmse = float(np.sqrt(np.mean((y - model.predict(X))**2)))
-        cv = cross_val_score(model, X, y, cv=KFold(5, shuffle=True, random_state=42), scoring="r2")
+        cv_folds = min(5, len(edf))
+        cv = cross_val_score(model, X, y, cv=KFold(cv_folds, shuffle=True, random_state=42), scoring="r2")
         edf["predicted"] = model.predict(X)
         edf["residual"] = edf["my_rating"] - edf["predicted"]
         from collections import defaultdict
@@ -809,6 +814,8 @@ elif page == '🎯 Predict':
                 st.markdown("### Similar films you've rated")
                 for n in nb[:5]:
                     st.markdown(f"• **{n.get('title','?')}** — you rated {n.get('rating','?')}★")
+        elif res.get("tmdb_info", {}).get("found"):
+            st.warning("Film found in TMDB, but could not predict rating. (Make sure you have ingested data via pipeline.py)")
         else:
             st.warning("Film not found. Check spelling or add year.")
 
@@ -823,7 +830,8 @@ elif page == '🤖 Persona':
     has_reviews = False
     if "user_df" in st.session_state and len(st.session_state.get("user_df", pd.DataFrame())) > 0:
         _df = st.session_state["user_df"]
-        has_reviews = (_df["my_review"].str.len() > 20).sum() > 10
+        if "my_review" in _df.columns:
+            has_reviews = (_df["my_review"].fillna("").astype(str).str.len() > 20).sum() > 10
 
     if not has_reviews:
         st.info("Requires Letterboxd data with reviews (50+ recommended). Upload in Discover tab first.")
