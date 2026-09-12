@@ -295,7 +295,9 @@ elif page == '🎬 Discover':
                         if cl in ("name", "title"): col_map[c] = "title"
                         elif cl == "year": col_map[c] = "year"
                         elif cl == "rating": col_map[c] = "final_rating"
-                        elif cl == "date": col_map[c] = "watch_date"
+                        elif cl in ("date", "watched date"): col_map[c] = "watch_date"
+                        elif cl == "review": col_map[c] = "my_review"
+                        elif cl == "tags": col_map[c] = "tags"
                     udf = udf.rename(columns=col_map)
                     if "title" not in udf.columns:
                         st.error("CSV doesn't have a 'Name' or 'Title' column.")
