@@ -6,8 +6,17 @@ Users enter keys ONCE — never asked again.
 import json
 from pathlib import Path
 
-CONFIG_DIR  = Path.home() / '.culturaliq'
+CONFIG_DIR = Path.home() / '.movinator'
 CONFIG_FILE = CONFIG_DIR / 'config.json'
+
+_OLD_CONFIG_DIR = Path.home() / '.culturaliq'
+_OLD_CONFIG_FILE = _OLD_CONFIG_DIR / 'config.json'
+
+# Migrate from old location if needed
+if _OLD_CONFIG_FILE.exists() and not CONFIG_FILE.exists():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    import shutil
+    shutil.copy2(str(_OLD_CONFIG_FILE), str(CONFIG_FILE))
 
 def load_config() -> dict:
     """Load persisted config. Returns empty dict if not found."""

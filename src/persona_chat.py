@@ -38,12 +38,15 @@ from typing import List, Dict, Optional
 import pandas as pd
 
 # ── Bootstrap: add gpt-from-scratch to Python path ─────────────────────────
-_V4_ROOT = Path("/Users/rushilreddy/untitled folder 4/gpt-from-scratch")
-_V4_CORE = _V4_ROOT / "v4"
+try:
+    _V4_ROOT = Path("/Users/rushilreddy/untitled folder 4/gpt-from-scratch")
+    _V4_CORE = _V4_ROOT / "v4"
 
-for _p in [str(_V4_ROOT), str(_V4_CORE)]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+    for _p in [str(_V4_ROOT), str(_V4_CORE)]:
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+except Exception:
+    pass
 
 # ── Letterboxd imports ──────────────────────────────────────────────────────
 from src.vector_store import get_collection, query_similar
@@ -174,14 +177,27 @@ _profile_cached = None
 def _get_cached_df():
     global _df_cached
     if _df_cached is None:
-        _df_cached = load_letterboxd_data()
+        try:
+            _df_cached = load_letterboxd_data()
+        except Exception:
+            _df_cached = pd.DataFrame(columns=["title", "year", "final_rating", "my_review", "tags", "is_rewatch", "watch_date", "uri"])
     return _df_cached
 
 
 def _get_cached_profile():
     global _profile_cached
     if _profile_cached is None:
-        _profile_cached = build_profile(_get_cached_df())
+        try:
+            _profile_cached = build_profile(_get_cached_df())
+        except Exception:
+            _profile_cached = {
+                "total_movies": 0, "total_rated": 0, "total_reviews": 0,
+                "rewatches": 0, "avg_rating": 0, "five_star_count": 0,
+                "one_star_count": 0, "peak_year": 2024, "dist_str": "",
+                "north_stars": [], "top_genres": [], "low_genres": [],
+                "top_directors": [], "top_decade": None,
+                "best_reviews": [], "_df": pd.DataFrame(), "_reviewed": pd.DataFrame(),
+            }
     return _profile_cached
 
 

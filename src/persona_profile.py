@@ -68,7 +68,21 @@ def build_profile(df: pd.DataFrame = None) -> Dict:
     if df is None:
         df = load_letterboxd_data()
 
+    if len(df) == 0:
+        _profile_cache = {
+            "total_movies": 0, "total_rated": 0, "total_reviews": 0,
+            "rewatches": 0, "avg_rating": 0, "five_star_count": 0,
+            "one_star_count": 0, "peak_year": 2024, "dist_str": "",
+            "north_stars": [], "top_genres": [], "low_genres": [],
+            "top_directors": [], "top_decade": None,
+            "best_reviews": [], "_df": df, "_reviewed": pd.DataFrame(),
+        }
+        return _profile_cache
+
     rated = df[df["final_rating"].notna()].copy()
+    if "my_review" not in df.columns:
+        df["my_review"] = ""
+    df["my_review"] = df["my_review"].fillna("").astype(str)
     reviewed = df[df["my_review"].str.len() > 20].copy()
     reviewed["rev_len"] = reviewed["my_review"].str.len()
 
@@ -77,18 +91,31 @@ def build_profile(df: pd.DataFrame = None) -> Dict:
     total = len(df)
     total_reviews = len(reviewed)
     total_rated = len(rated)
-    rewatches = int(df["is_rewatch"].sum())
+    if "is_rewatch" not in df.columns:
+        df["is_rewatch"] = False
+    rewatches = int(df["is_rewatch"].fillna(False).sum())
     five_star_count = int((rated["final_rating"] == 5.0).sum())
     one_star_count  = int((rated["final_rating"] <= 1.0).sum())
 
     # Watch timeline
-    dated = df.dropna(subset=["watch_date"]).copy()
-    dated["year_watched"] = dated["watch_date"].dt.year
-    peak_year_s = dated.groupby("year_watched").size()
-    peak_year = int(peak_year_s.idxmax()) if len(peak_year_s) > 0 else 2021
+    if "watch_date" in df.columns:
+        dated = df.dropna(subset=["watch_date"]).copy()
+        try:
+            dated["watch_date"] = pd.to_datetime(dated["watch_date"], errors="coerce")
+            dated = dated.dropna(subset=["watch_date"])
+            dated["year_watched"] = dated["watch_date"].dt.year
+            peak_year_s = dated.groupby("year_watched").size()
+            peak_year = int(peak_year_s.idxmax()) if len(peak_year_s) > 0 else 2024
+        except Exception:
+            peak_year = 2024
+    else:
+        peak_year = 2024
 
     # ── North star films (rewatched AND rated 5★) ────────────────────────────
-    north_stars = df[(df["is_rewatch"] == True) & (df["final_rating"] == 5.0)]["title"].tolist()
+    if "final_rating" in df.columns and "is_rewatch" in df.columns:
+        north_stars = df[(df["is_rewatch"] == True) & (df["final_rating"] == 5.0)]["title"].tolist()
+    else:
+        north_stars = []
     north_stars_display = north_stars[:8] if north_stars else []
 
     # ── Films rated 5★ (for director/genre extraction) ───────────────────────

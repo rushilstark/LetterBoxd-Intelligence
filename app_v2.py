@@ -108,7 +108,7 @@ h2, h3 { color: #E9A84C !important; font-weight: 600 !important; }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_poster(url: str):
     if not url or not url.startswith("http"): return None
     try:
@@ -262,9 +262,17 @@ elif page == '🎬 Discover':
                                 for item in recent.get("items",[])
                                 if item.get("track") and item["track"].get("artists")
                             ))[:10]
-                            feats = [f for f in (sp.audio_features(track_ids[:50]) or []) if f]
+                            try:
+                                feats = [f for f in (sp.audio_features(track_ids[:50]) or []) if f]
+                            except Exception:
+                                feats = []
+                            if not feats:
+                                feats = [{"valence": 0.5, "energy": 0.5, "acousticness": 0.3, "instrumentalness": 0.1} for _ in track_ids[:50]]
                         except Exception:
-                            feats = get_top_tracks_with_features(sp, limit=50)
+                            try:
+                                feats = get_top_tracks_with_features(sp, limit=50)
+                            except Exception:
+                                feats = [{"valence": 0.5, "energy": 0.5, "acousticness": 0.3, "instrumentalness": 0.1}]
                             artist_names = []
                         mood = get_recent_mood_from_features(feats)
                         st.session_state["spotify_mood"] = mood
@@ -500,13 +508,15 @@ elif page == '🎬 Discover':
         </div>
         """, unsafe_allow_html=True)
 
+        if "discover_filter" not in st.session_state:
+            st.session_state["discover_filter"] = "all"
         fc1, fc2, fc3, fc4, _ = st.columns([1,1,1,1,4])
-        filt = "all"
-        if fc1.button("All", use_container_width=True, key="f_all"): filt = "all"
-        if fc2.button("Hidden Gems", use_container_width=True, key="f_hg"): filt = "hidden"
-        if fc3.button("Acclaimed", use_container_width=True, key="f_acc"): filt = "acclaimed"
-        if fc4.button("Recent", use_container_width=True, key="f_rec"): filt = "recent"
+        if fc1.button("All", use_container_width=True, key="f_all"): st.session_state["discover_filter"] = "all"; st.rerun()
+        if fc2.button("Hidden Gems", use_container_width=True, key="f_hg"): st.session_state["discover_filter"] = "hidden"; st.rerun()
+        if fc3.button("Acclaimed", use_container_width=True, key="f_acc"): st.session_state["discover_filter"] = "acclaimed"; st.rerun()
+        if fc4.button("Recent", use_container_width=True, key="f_rec"): st.session_state["discover_filter"] = "recent"; st.rerun()
 
+        filt = st.session_state["discover_filter"]
         filtered = recs
         if filt == "hidden": filtered = [r for r in recs if (r.get("vote_average") or 0) < 7] or recs
         elif filt == "acclaimed": filtered = [r for r in recs if (r.get("vote_average") or 0) >= 7.5] or recs
@@ -603,7 +613,7 @@ elif page == '📊 My Taste':
     st.markdown("")
 
     @st.cache_data(ttl=3600, show_spinner="Computing taste analysis...")
-    def compute_taste(titles_hash):
+    def compute_taste(_rated_df, titles_hash):
         import sqlite3
         from scipy import stats as _st
         from sklearn.linear_model import Ridge
@@ -625,7 +635,7 @@ elif page == '📊 My Taste':
             except: pass
 
         enriched = []
-        for _, row in rated.iterrows():
+        for _, row in _rated_df.iterrows():
             try: yr = int(float(row.get("year", 0)))
             except: yr = 0
             tmdb = tmdb_map.get((str(row["title"]).lower().strip(), yr))
@@ -674,14 +684,12 @@ elif page == '📊 My Taste':
             "top_hated": edf.nsmallest(6,"residual")[["title","my_rating","tmdb_rating","residual"]].to_dict("records"),
         }
 
-    analysis = compute_taste(hash(tuple(rated["title"].tolist()[:100])))
+    analysis = compute_taste(rated, hash(tuple(rated["title"].tolist()[:100])))
     if analysis:
         r2_val, rmse_val, corrs = analysis["r2"], analysis["rmse"], analysis["correlations"]
     else:
-        r2_val, rmse_val = 0.22, 0.89
-        corrs = {"TMDB community rating": 0.43, "Release year": -0.21,
-                 "Is rewatch": 0.13, "Review length": 0.11, "Runtime": 0.07}
-        st.info("TMDB data not cached. Showing reference model values.")
+        st.warning("⚠️ Taste analysis requires TMDB enrichment data. Run `python pipeline.py` first, or upload more rated films.")
+        st.stop()
 
     personal_pct = round((1 - r2_val) * 100, 1)
     obj_pct = round(r2_val * 100, 1)
@@ -766,7 +774,7 @@ elif page == '🎯 Predict':
     st.markdown("---")
 
     has_data = False
-    if "user_df" in st.session_state and len(st.session_state.get("user_df",[])) > 0:
+    if "user_df" in st.session_state and len(st.session_state.get("user_df", pd.DataFrame())) > 0:
         has_data = True
 
     if not has_data:
@@ -841,7 +849,7 @@ elif page == '🤖 Persona':
 
     from src.persona_chat import get_engine_status, chat_with_persona
     status = get_engine_status()
-    ec = "#30d158" if status.get("backend") == "mlx" else "#E9A84C"
+    ec = "#30d158" if "mlx" in status.get("backend", "").lower() else "#E9A84C"
     st.markdown(f"""
     <div style='display:inline-flex;gap:8px;align-items:center;padding:5px 12px;
                 background:rgba(15,15,20,0.8);border:1px solid rgba(255,255,255,0.06);
